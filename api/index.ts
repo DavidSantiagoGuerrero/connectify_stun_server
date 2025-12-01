@@ -98,6 +98,6 @@ io.on("connection", (socket) => {
 /**
  * Start the HTTP server
  */
-httpServer.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+httpServer.listen(PORT, "0.0.0.0", () => {
+  console.log(`Stun server running on port ${PORT}`);
 });
