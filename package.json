@@ -1,0 +1,22 @@
+{
+  "name": "connectify_stun_server",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "tsx watch api/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
+    "simple-peer": "^9.11.1",
+    "socket": "^1.1.27",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
