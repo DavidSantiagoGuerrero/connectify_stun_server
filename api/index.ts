@@ -7,16 +7,21 @@
  */
 
 import { Server } from "socket.io";
+import 'dotenv/config';
 
-const PORT = 9000;
+const PORT = Number(process.env.PORT);
 
 /**
  * Socket.IO server instance configured for WebRTC signaling
  * @constant {Server} io - The main Socket.IO server instance
  */
-const io = new Server(PORT, {
+const io = new Server({
   cors: { origin: "*" },
 });
+
+io.listen(PORT);
+
+console.log(`server running on port ${PORT}`)
 
 /**
  * Room management storage
