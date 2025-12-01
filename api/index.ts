@@ -96,6 +96,38 @@ io.on("connection", (socket) => {
 });
 
 /**
+ * HTTP request handler for health check and basic routing.
+ * Provides a simple health check endpoint and handles 404 responses for unknown routes.
+ * 
+ * @param {import('http').IncomingMessage} req - The HTTP request object
+ * @param {import('http').ServerResponse} res - The HTTP response object
+ * @listens request
+ */
+httpServer.on("request", (req, res) => {
+  if (req.url === "/health" || req.url === "/") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", service: "stun-server", PORT }));
+    return;
+  }
+  res.writeHead(404);
+  res.end();
+});
+
+/**
+ * HTTP server error handler.
+ * Logs server errors and provides specific handling for port conflicts.
+ * 
+ * @param {NodeJS.ErrnoException} error - The error object
+ * @listens error
+ */
+httpServer.on("error", (error: any) => {
+  console.error("❌ HTTP Server error:", error);
+  if (error.code === "EADDRINUSE") {
+    console.error(`   Port ${PORT} is already in use`);
+  }
+});
+
+/**
  * Start the HTTP server
  */
 httpServer.listen(PORT, "0.0.0.0", () => {
