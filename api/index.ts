@@ -7,21 +7,26 @@
  */
 
 import { Server } from "socket.io";
+import { createServer } from "http";
 import 'dotenv/config';
 
 const PORT = Number(process.env.PORT);
 
 /**
+ * HTTP server instance used as the foundation for the Socket.IO server.
+ * @type {import('http').Server}
+ */
+const httpServer = createServer();
+
+/**
  * Socket.IO server instance configured for WebRTC signaling
  * @constant {Server} io - The main Socket.IO server instance
  */
-const io = new Server({
+const io = new Server(httpServer, {
   cors: { origin: "*" },
+  allowEIO3: true,
 });
 
-io.listen(PORT);
-
-console.log(`server running on port ${PORT}`)
 
 /**
  * Room management storage
@@ -39,7 +44,7 @@ io.on("connection", (socket) => {
    * @type {string} room - The room identifier the user wants to join
    */
   const room = socket.handshake.query.room as string;
-  
+
   /**
    * Extract user display name from connection query parameters
    * @type {string} name - The user's display name, defaults to "Anonymous"
@@ -88,4 +93,11 @@ io.on("connection", (socket) => {
   socket.on("signal", ({ to, data }) => {
     io.to(to).emit("signal", { from: socket.id, data });
   });
+});
+
+/**
+ * Start the HTTP server
+ */
+httpServer.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });

@@ -10,6 +10,7 @@
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
+    "http": "^0.0.1-security",
     "simple-peer": "^9.11.1",
     "socket": "^1.1.27",
     "socket.io": "^4.8.1"
