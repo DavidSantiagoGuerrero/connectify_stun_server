@@ -3,14 +3,15 @@
  * This server facilitates peer-to-peer connections for video calling by handling
  * WebRTC signaling between clients in different rooms.
  * @author Connectify Team
- * @version 1.0.0
+ * @version 1.0.1 (Corrected HTTP Request Handling)
  */
 
 import { Server } from "socket.io";
 import { createServer } from "http";
 import 'dotenv/config';
 
-const PORT = Number(process.env.PORT);
+// Asegúrate de que PORT esté definido en tu archivo .env
+const PORT = Number(process.env.PORT || 9000); 
 
 /**
  * HTTP server instance used as the foundation for the Socket.IO server.
@@ -23,8 +24,10 @@ const httpServer = createServer();
  * @constant {Server} io - The main Socket.IO server instance
  */
 const io = new Server(httpServer, {
-  cors: { origin: "*" },
-  allowEIO3: true,
+  cors: { origin: "*" },
+  // Puedes omitir 'allowEIO3: true' a menos que necesites compatibilidad
+  // con clientes muy antiguos de Socket.IO.
+  allowEIO3: true,
 });
 
 
@@ -33,103 +36,131 @@ const io = new Server(httpServer, {
  * Stores users by room ID, each user has an ID and display name
  * @type {Record<string, Array<{id: string, name: string}>>}
  */
-const rooms: Record<string, { id: string; name: string }[]> = {};/**
+const rooms: Record<string, { id: string; name: string }[]> = {};
+
+// -------------------------------------------------------------------
+// Socket.IO Signaling Logic
+// -------------------------------------------------------------------
+
+/**
  * Handle new client connections
  * Sets up WebRTC signaling for peer-to-peer video calls
  * @param {Socket} socket - The connected client socket
  */
 io.on("connection", (socket) => {
-  /**
-   * Extract room ID from connection query parameters
-   * @type {string} room - The room identifier the user wants to join
-   */
-  const room = socket.handshake.query.room as string;
+  /**
+   * Extract room ID from connection query parameters
+   */
+  const room = socket.handshake.query.room as string;
 
-  /**
-   * Extract user display name from connection query parameters
-   * @type {string} name - The user's display name, defaults to "Anonymous"
-   */
-  const name = (socket.handshake.query.name as string) || "Anonymous";
+  /**
+   * Extract user display name from connection query parameters
+   */
+  const name = (socket.handshake.query.name as string) || "Anonymous";
 
-  // Reject connection if no room is specified
-  if (!room) return;
+  // Reject connection if no room is specified
+  if (!room) {
+    console.log(`Connection rejected for ${socket.id}: No room specified.`);
+    return socket.disconnect();
+  }
 
-  // Initialize room if it doesn't exist
-  if (!rooms[room]) rooms[room] = [];
+  // Initialize room if it doesn't exist
+  if (!rooms[room]) rooms[room] = [];
 
-  // Send current users in room to the new user (excluding themselves)
-  socket.emit("usersInRoom", rooms[room]);
+  // 1. Send current users in room to the new user (excluding themselves)
+  socket.emit("usersInRoom", rooms[room]);
 
-  // Add new user to the room
-  rooms[room].push({ id: socket.id, name });
+  // 2. Add new user to the room
+  rooms[room].push({ id: socket.id, name });
 
-  // Join the Socket.IO room for message broadcasting
-  socket.join(room);
+  // 3. Join the Socket.IO room for message broadcasting
+  socket.join(room);
 
-  // Notify all other users in the room about the new user
-  socket.to(room).emit("newUserConnected", {
-    id: socket.id,
-    name,
-  });
-  console.log("User joined:", name, socket.id);  /**
-   * Handle user disconnection
-   * Removes user from room and notifies other users
-   */
-  socket.on("disconnect", () => {
-    // Remove disconnected user from room
-    rooms[room] = rooms[room].filter((u) => u.id !== socket.id);
+  // 4. Notify all other users in the room about the new user
+  socket.to(room).emit("newUserConnected", {
+    id: socket.id,
+    name,
+  });
+  console.log(`User joined room '${room}': ${name} (${socket.id})`);
 
-    // Notify remaining users about the disconnection
-    socket.to(room).emit("userDisconnected", { userId: socket.id });
-  });
+  /**
+   * Handle user disconnection
+   */
+  socket.on("disconnect", () => {
+    if (rooms[room]) {
+      // Remove disconnected user from room
+      rooms[room] = rooms[room].filter((u) => u.id !== socket.id);
 
-  /**
-   * Handle WebRTC signaling between peers
-   * Forwards ICE candidates, offers, and answers between clients
-   * @param {Object} signalData - The signaling data
-   * @param {string} signalData.to - Target socket ID to send signal to
-   * @param {Object} signalData.data - WebRTC signaling data (offer/answer/candidate)
-   */
-  socket.on("signal", ({ to, data }) => {
-    io.to(to).emit("signal", { from: socket.id, data });
-  });
+      // Notify remaining users about the disconnection
+      socket.to(room).emit("userDisconnected", { userId: socket.id });
+      console.log(`User disconnected from room '${room}': ${name} (${socket.id})`);
+
+      // Opcional: Limpiar la sala si se queda vacía
+      if (rooms[room].length === 0) {
+        delete rooms[room];
+        console.log(`Room '${room}' cleared.`);
+      }
+    }
+  });
+
+  /**
+   * Handle WebRTC signaling between peers
+   */
+  socket.on("signal", ({ to, data }) => {
+    // Reenviar el objeto de señalización al socket de destino
+    io.to(to).emit("signal", { from: socket.id, data });
+  });
 });
+
+// -------------------------------------------------------------------
+// HTTP Request Handling (Health Check & 404)
+// -------------------------------------------------------------------
 
 /**
  * HTTP request handler for health check and basic routing.
- * Provides a simple health check endpoint and handles 404 responses for unknown routes.
- * 
- * @param {import('http').IncomingMessage} req - The HTTP request object
+ * **CORRECCIÓN:** Asegura que las solicitudes de Socket.IO no sean interceptadas
+ * y respondidas con un 404.
+ * * @param {import('http').IncomingMessage} req - The HTTP request object
  * @param {import('http').ServerResponse} res - The HTTP response object
- * @listens request
  */
 httpServer.on("request", (req, res) => {
-  if (req.url === "/health" || req.url === "/") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ status: "ok", service: "stun-server", PORT }));
-    return;
-  }
-  res.writeHead(404);
-  res.end();
+  // **CLAVE DE CORRECCIÓN:** Permitir que Socket.IO/Engine.io maneje sus propias rutas.
+  // Por defecto, Engine.io usa la ruta /socket.io/
+  if (req.url && req.url.startsWith("/socket.io/")) {
+    return; // Dejar que el servidor Socket.IO interno maneje esta solicitud.
+  }
+
+  // Manejar rutas de health check y root
+  if (req.url === "/health" || req.url === "/") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok", service: "stun-server", PORT }));
+    return;
+  }
+
+  // 404 para todas las demás rutas NO manejadas por Socket.IO o los checks anteriores
+  res.writeHead(404);
+  res.end();
 });
+
+// -------------------------------------------------------------------
+// Server Startup and Error Handling
+// -------------------------------------------------------------------
 
 /**
  * HTTP server error handler.
- * Logs server errors and provides specific handling for port conflicts.
- * 
- * @param {NodeJS.ErrnoException} error - The error object
- * @listens error
  */
 httpServer.on("error", (error: any) => {
-  console.error("❌ HTTP Server error:", error);
-  if (error.code === "EADDRINUSE") {
-    console.error(`   Port ${PORT} is already in use`);
-  }
+  console.error("❌ HTTP Server error:", error);
+  if (error.code === "EADDRINUSE") {
+    console.error(`   Port ${PORT} is already in use`);
+    // Opcional: Terminar el proceso si el puerto está en uso
+    process.exit(1);
+  }
 });
 
 /**
  * Start the HTTP server
  */
 httpServer.listen(PORT, "0.0.0.0", () => {
-  console.log(`Stun server running on port ${PORT}`);
+  console.log(`Stun server running on port ${PORT}`);
 });
