@@ -27,7 +27,8 @@ const io = new Server(httpServer, {
   cors: { origin: "*" },
   // Puedes omitir 'allowEIO3: true' a menos que necesites compatibilidad
   // con clientes muy antiguos de Socket.IO.
-  allowEIO3: true,
+  allowEIO3: true,
+  transports: ['websocket', 'polling'],
 });
 
 
