@@ -25,6 +25,7 @@ const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: { origin: "*" },
   allowEIO3: true,
+  transports: ['websocket', 'polling'],
 });
 
 
@@ -52,7 +53,10 @@ io.on("connection", (socket) => {
   const name = (socket.handshake.query.name as string) || "Anonymous";
 
   // Reject connection if no room is specified
-  if (!room) return;
+  if (!room) {
+    socket.disconnect();
+    return;
+  }
 
   // Initialize room if it doesn't exist
   if (!rooms[room]) rooms[room] = [];
@@ -71,7 +75,9 @@ io.on("connection", (socket) => {
     id: socket.id,
     name,
   });
-  console.log("User joined:", name, socket.id);  /**
+  console.log("User joined:", name, socket.id);
+
+  /**
    * Handle user disconnection
    * Removes user from room and notifies other users
    */
@@ -93,6 +99,15 @@ io.on("connection", (socket) => {
   socket.on("signal", ({ to, data }) => {
     io.to(to).emit("signal", { from: socket.id, data });
   });
+
+  /**
+   * Handle Socket.IO connection errors
+   * Logs any errors that occur during the socket connection lifecycle
+   * @param {Error} error - The error object containing details about the socket error
+   */
+  socket.on("error", (error) => {
+    console.error("Socket error:", error);
+  });
 });
 
 /**
@@ -104,6 +119,11 @@ io.on("connection", (socket) => {
  * @listens request
  */
 httpServer.on("request", (req, res) => {
+  // Prevent multiple responses by checking if headers have already been sent
+  if (res.headersSent) {
+    return;
+  }
+  
   if (req.url === "/health" || req.url === "/") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ status: "ok", service: "stun-server", PORT }));
@@ -123,7 +143,7 @@ httpServer.on("request", (req, res) => {
 httpServer.on("error", (error: any) => {
   console.error("❌ HTTP Server error:", error);
   if (error.code === "EADDRINUSE") {
-    console.error(`   Port ${PORT} is already in use`);
+    console.error(`Port ${PORT} is already in use`);
   }
 });
 
